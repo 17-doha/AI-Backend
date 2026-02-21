@@ -1,9 +1,10 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.main import limiter
 from app.schemas.chat import SessionCreate, SessionResponse
 from app.services import crud
 
@@ -18,12 +19,13 @@ router = APIRouter(prefix="/sessions", tags=["Sessions"])
     status_code=status.HTTP_201_CREATED,
     summary="Create a new chat session",
 )
+@limiter.limit("20/minute")
 async def create_session(
+    request: Request,
     payload: SessionCreate,
     db: AsyncSession = Depends(get_db),
 ) -> SessionResponse:
-    """Create a new chat session linked to an existing agent."""
-    # Verify the agent exists
+    """Create a new chat session linked to an existing agent. Limit: 20 req/min."""
     agent = await crud.get_agent(db, payload.agent_id)
     if agent is None:
         raise HTTPException(
@@ -41,11 +43,13 @@ async def create_session(
     response_model=SessionResponse,
     summary="Get a session with its message history",
 )
+@limiter.limit("60/minute")
 async def get_session(
+    request: Request,
     session_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> SessionResponse:
-    """Retrieve a session and its full chronological message history."""
+    """Retrieve a session and its full chronological message history. Limit: 60 req/min."""
     session = await crud.get_session(db, session_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")

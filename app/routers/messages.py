@@ -1,10 +1,11 @@
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.main import limiter
 from app.models.chat import RoleEnum
 from app.schemas.chat import TextMessageRequest, TextMessageResponse
 from app.services import crud
@@ -36,7 +37,9 @@ def _build_openai_messages(system_prompt: str, history) -> list[dict]:
     status_code=status.HTTP_201_CREATED,
     summary="Send a text message and get an AI response",
 )
+@limiter.limit("20/minute")
 async def send_text_message(
+    request: Request,
     payload: TextMessageRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TextMessageResponse:
@@ -46,18 +49,17 @@ async def send_text_message(
     3. Call OpenAI ChatCompletion API.
     4. Persist both the user message and the assistant response.
     5. Return both messages.
+
+    Limit: 20 req/min (OpenAI API cost).
     """
-    # Fetch and validate session
     session = await crud.get_session(db, payload.session_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-    # Build history for the model
     history = await crud.get_session_messages(db, session.id)
     openai_messages = _build_openai_messages(session.agent.prompt, history)
     openai_messages.append({"role": "user", "content": payload.content})
 
-    # Call ChatCompletion
     try:
         assistant_text = await openai_service.chat_completion(openai_messages)
     except Exception as exc:
@@ -67,7 +69,6 @@ async def send_text_message(
             detail="OpenAI API error. Please try again later.",
         )
 
-    # Persist messages
     user_msg = await crud.create_message(db, session.id, RoleEnum.user, payload.content)
     asst_msg = await crud.create_message(db, session.id, RoleEnum.assistant, assistant_text)
 
@@ -86,7 +87,9 @@ async def send_text_message(
         }
     },
 )
+@limiter.limit("10/minute")
 async def send_voice_message(
+    request: Request,
     session_id: str,
     audio: UploadFile = File(..., description="Audio file (mp3, wav, webm, m4a, ogg, etc.)"),
     db: AsyncSession = Depends(get_db),
@@ -99,13 +102,13 @@ async def send_voice_message(
     3. Convert assistant text response → TTS audio (MP3).
     4. Save transcribed user text and assistant text to the database.
     5. Return the MP3 audio file directly in the response body.
+
+    Limit: 10 req/min (most expensive — 3 OpenAI API calls per request).
     """
-    # Validate session
     session = await crud.get_session(db, session_id)
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
-    # Read audio bytes
     audio_bytes = await audio.read()
     if not audio_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio file is empty")
@@ -165,6 +168,6 @@ async def send_voice_message(
         media_type="audio/mpeg",
         headers={
             "Content-Disposition": "attachment; filename=response.mp3",
-            "X-Transcription": transcription[:200],  # handy debug header
+            "X-Transcription": transcription[:200],
         },
     )

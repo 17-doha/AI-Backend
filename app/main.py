@@ -1,8 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
 from app.routers import agents, messages, sessions
@@ -13,6 +17,11 @@ logging.basicConfig(
 )
 
 settings = get_settings()
+
+# ── Rate Limiter (singleton shared across routers) ────────────────────────────
+# Key function: identify clients by their IP address.
+# Override by importing `limiter` from this module in each router.
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -44,7 +53,6 @@ async def lifespan(app: FastAPI):
     logging.getLogger(__name__).info("AI Agent Platform shutdown complete")
 
 
-
 # ── App ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -60,6 +68,10 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+# ── Attach limiter state & 429 handler ───────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
 
@@ -81,6 +93,7 @@ app.include_router(messages.router)
 # ── Health check ──────────────────────────────────────────────────────────────
 
 @app.get("/health", tags=["Health"], summary="Health check")
-async def health_check() -> dict:
+@limiter.limit("60/minute")
+async def health_check(request: Request) -> dict:
     """Returns service status. Used by Docker and load balancers."""
     return {"status": "ok", "version": settings.app_version}
