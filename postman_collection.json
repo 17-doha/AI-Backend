@@ -1,0 +1,220 @@
+{
+    "info": {
+        "name": "AI Agent Platform",
+        "description": "Complete Postman collection for the AI Agent Platform API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        },
+        {
+            "key": "agent_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "session_id",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Health",
+            "item": [
+                {
+                    "name": "Health Check",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/health",
+                        "description": "Returns service status"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Agents",
+            "item": [
+                {
+                    "name": "Create Agent",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var data = pm.response.json();",
+                                    "pm.collectionVariables.set('agent_id', data.id);",
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/agents",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Support Bot\",\n  \"prompt\": \"You are a helpful and friendly customer support agent. Always be polite.\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "List Agents",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{base_url}}/agents?skip=0&limit=100",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "agents"
+                            ],
+                            "query": [
+                                {
+                                    "key": "skip",
+                                    "value": "0"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "100"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Agent",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/agents/{{agent_id}}"
+                    }
+                },
+                {
+                    "name": "Update Agent",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/agents/{{agent_id}}",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Expert Support Bot\",\n  \"prompt\": \"You are an expert customer support agent with 10 years of experience.\"\n}"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Sessions",
+            "item": [
+                {
+                    "name": "Create Session",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var data = pm.response.json();",
+                                    "pm.collectionVariables.set('session_id', data.id);",
+                                    "pm.test('Status 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/sessions",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"agent_id\": \"{{agent_id}}\"\n}"
+                        }
+                    }
+                },
+                {
+                    "name": "Get Session (with history)",
+                    "request": {
+                        "method": "GET",
+                        "url": "{{base_url}}/sessions/{{session_id}}"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Messages",
+            "item": [
+                {
+                    "name": "Send Text Message",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/messages/text",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"content\": \"Hello! Can you help me with my order?\"\n}"
+                        },
+                        "description": "Send a text message and receive an AI text response. Both messages are stored."
+                    }
+                },
+                {
+                    "name": "Send Voice Message",
+                    "request": {
+                        "method": "POST",
+                        "url": {
+                            "raw": "{{base_url}}/messages/voice?session_id={{session_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "messages",
+                                "voice"
+                            ],
+                            "query": [
+                                {
+                                    "key": "session_id",
+                                    "value": "{{session_id}}"
+                                }
+                            ]
+                        },
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "audio",
+                                    "type": "file",
+                                    "src": "/path/to/your/audio.webm",
+                                    "description": "Audio file (mp3, wav, webm, m4a, ogg)"
+                                }
+                            ]
+                        },
+                        "description": "Upload an audio file. Pipeline: Whisper STT → ChatCompletion → TTS. Returns MP3 audio in the response body. Check X-Transcription header for the transcribed text."
+                    }
+                }
+            ]
+        }
+    ]
+}
