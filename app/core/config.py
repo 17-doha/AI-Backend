@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Database
-    database_url: str = "postgresql+asyncpg://postgres:password@localhost:5432/agentdb"
+    database_url: str = "sqlite+aiosqlite:///./agent_platform.db"
 
     # OpenAI
     openai_api_key: str = "sk-placeholder"

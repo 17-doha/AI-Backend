@@ -1,14 +1,9 @@
 # ═══════════════════════════════════════════════════════════════
-#  Stage 1 — Builder: install dependencies
+#  Stage 1 — Builder: install Python dependencies
 # ═══════════════════════════════════════════════════════════════
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
-
-# System dependencies for asyncpg
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev gcc \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --upgrade pip \
@@ -27,11 +22,12 @@ COPY --from=builder /install /usr/local
 
 # Copy application source
 COPY app/ ./app/
-COPY alembic/ ./alembic/
-COPY alembic.ini .
+
+# Directory for SQLite database persistence
+RUN mkdir -p /app/data
 
 # Non-root user for security
-RUN useradd -m -u 1000 appuser
+RUN useradd -m -u 1000 appuser && chown -R appuser /app
 USER appuser
 
 # Expose port
@@ -41,5 +37,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
+# Default env (override with --env-file .env)
+ENV DATABASE_URL=sqlite+aiosqlite:///./data/agent_platform.db \
+    APP_ENV=production
+
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
